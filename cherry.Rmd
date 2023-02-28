@@ -1,0 +1,235 @@
+---
+title: "2023 Cherry Blossom Prediction"
+author: "Sarah Boyt"
+date: "02/28/2023"
+output:
+  html_document:
+    df_print: kable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = FALSE, 
+                      message = FALSE,
+                      fig.align = 'center',
+                      out.width = '80%')
+```
+
+## Instructions
+This model for predicting cherry blossom dates uses the following packages:tidyverse,rnoaa and lubridate. 
+```{r, eval=FALSE}
+# install packges
+install.packages('tidyverse')
+install.packages(rnoaa)
+install.packages(lubridate)
+```
+
+
+```{r}
+#load packages
+library(tidyverse)
+library(rnoaa)
+library(lubridate)
+```
+
+
+## Loading the data
+
+
+```{r}
+# upload cherry bloom data
+cherry <- read.csv("data/washingtondc.csv") %>% 
+  bind_rows(read.csv("data/liestal.csv")) %>% 
+  bind_rows(read.csv("data/kyoto.csv"))
+```
+
+## Visualizing the time series
+```{r, fig.width=8, fig.height=3, out.width='100%', fig.cap="Time series of peak bloom of cherry trees since 1880 at three different sites."}
+cherry %>% 
+  filter(year >= 1880) %>%
+  ggplot(aes(x = year, y = bloom_doy)) +
+  geom_point() +
+  geom_step(linetype = 'dotted', color = 'gray50') +
+  scale_x_continuous(breaks = seq(1880, 2020, by = 20)) +
+  facet_grid(cols = vars(str_to_title(location))) +
+  labs(x = "Year", y = "Peak bloom (days since Jan 1st)")
+```
+
+## Loading in temperture data and calculating gdd:
+The gdd is the accummulated growing degrees on the historical average bloom_doy. 
+ Growing degree days are calculated as follows :(Tmax-Tmin)/2 (the baseline is zero degrees celsius)
+
+
+```{r}
+# Find average DOY for each location 
+washington_doy <- cherry %>% filter(location == 'washingtondc') %>% filter(year >= 1980) 
+ washington_doy<- mean(washington_doy$bloom_doy)
+ 
+ kyoto_doy <- cherry %>% filter(location == 'kyoto') %>% filter(year >= 1980) 
+ kyoto_doy<- mean(kyoto_doy$bloom_doy)
+ 
+ liestal_doy <- cherry %>% filter(location == 'liestal') %>% filter(year >= 1980) 
+ liestal_doy<- mean(liestal_doy$bloom_doy)
+
+# Take the average of other doys to get estimate for vancouver 
+vancouver_doy <- sum(kyoto_doy,washington_doy,liestal_doy)/3
+```
+
+
+```{r}
+get_temperature_daily <- function (stationid) {
+  ghcnd_search(stationid = stationid, var = c("tmin","tmax",'prcp'), 
+               date_min = "1980-01-01", date_max = '2023-02-26') %>%
+     reduce(left_join) %>%
+    transmute(year = parse_number(format(date, "%Y")),
+               date, tmax = tmax / 10, tmin = tmin / 10,
+             gd = (tmax + tmin) / 2 - 0, prcp= prcp/10)
+}
+# find gdd 
+historic_temperatures_washington <-
+  tibble(location = "washingtondc", get_temperature_daily("USC00186350")) %>%
+  filter(!is.na(gd) & gd >=0, !is.na(prcp)) %>% group_by(location,year) %>% 
+  mutate(doy = yday(date)) %>% filter(doy <= round(washington_doy)) %>%
+  summarize(gdd=sum(gd),prcp=sum(prcp))
+
+historic_temperatures_liestal <-   
+   (tibble(location = "liestal", get_temperature_daily("GME00127786"))) %>%
+  filter(!is.na(gd) & gd >=0 & !is.na(prcp)) %>% group_by(location,year) %>% 
+  mutate(doy = yday(date)) %>% filter(doy <= round(liestal_doy)) %>%
+  summarize(gdd=sum(gd),prcp=sum(prcp))
+
+ historic_temperatures_kyoto<-
+(tibble(location = "kyoto", get_temperature_daily("JA000047759"))) %>%
+   filter(!is.na(gd) & gd >=0 & !is.na(prcp)) %>% group_by(location,year) %>% 
+   mutate(doy = yday(date)) %>% filter(doy <= round(kyoto_doy)) %>%
+   summarize(gdd=sum(gd),prcp=sum(prcp))
+   
+   historic_temperatures_vancouver <- 
+     (tibble(location = "vancouver", get_temperature_daily("CA001108395"))) %>%
+     filter(!is.na(gd) & gd >=0 & !is.na(prcp)) %>% group_by(location,year) %>% 
+     mutate(doy = yday(date)) %>% filter(doy <= round(vancouver_doy)) %>%
+     summarize(gdd=sum(gd),prcp=sum(prcp))
+
+historic_temperatures <- bind_rows(historic_temperatures_washington,historic_temperatures_kyoto,
+                          historic_temperatures_liestal,historic_temperatures_vancouver)
+
+historic_temperatures %>%
+  ggplot() + 
+  aes(year, gdd) + 
+  geom_line(aes(color=location)) +
+  xlim(1980, 2022) +
+  labs(x = "Year", y = "GDD °C") 
+
+historic_temperatures %>%
+  ggplot() + 
+  aes(year, prcp) + 
+  geom_line(aes(color=location)) +
+  xlim(1980, 2022) +
+  labs(x = "Year", y = "Precipation mm") 
+```
+
+
+
+```{r}
+
+## extrapolate gdd and prcp for future years
+#### gdd 
+ls_fit_gdd <- lm(gdd ~ year*location, 
+                         data = historic_temperatures)
+
+summary(ls_fit_gdd)
+
+gdd_predictions <-
+  expand_grid(location = c("washingtondc", "liestal", "kyoto", "vancouver" ),
+              year = 2023:2032) %>%
+  bind_cols(gdd = 
+              predict(ls_fit_gdd, newdata = .)) 
+
+#### prcp 
+ls_fit_prcp <- lm(prcp ~ year*location,
+                  data=historic_temperatures)
+summary(ls_fit_prcp)
+
+prcp_predictions <-
+  expand_grid(location = c("washingtondc", "liestal", "kyoto", "vancouver" ),
+              year = 2023:2032) %>%
+  bind_cols(prcp = 
+              predict(ls_fit_prcp, newdata = .)) 
+cherry_gdd <- historic_temperatures %>% 
+  left_join(cherry,
+            by=c('year','location')) 
+
+### model 
+ls_fit_blossom<- lm(bloom_doy ~ gdd*location+prcp, 
+     data = cherry_gdd)
+summary(ls_fit_blossom)
+
+### extrapolated data used to predict bloom_doy
+gdd_prcp_pred <- left_join(gdd_predictions,prcp_predictions,
+                           by=c('year','location'))
+
+
+### predictions for kyoto, washington dc, and liestal 
+prediction <-expand_grid(City = c("washingtondc", "liestal", "kyoto"),
+                        Year = 2023:2032) %>%
+  bind_cols(predicted_bloom_doy= 
+              predict(ls_fit_blossom, newdata = gdd_prcp_pred[1:30,])) 
+
+
+```
+
+## Extrapolating to Vancouver, BC
+
+```{r}
+#vancouver prediction 
+ls_fit_blossom_van<- lm(bloom_doy ~ gdd+prcp+ long + lat, 
+                    data = cherry_gdd)
+
+summary(ls_fit_blossom_van)
+
+gdd_prcp_pred$lat <- ifelse(gdd_prcp_pred$location=='vancouver',49.22,NA)
+gdd_prcp_pred$long <- ifelse(gdd_prcp_pred$location=='vancouver',-123.16,NA)
+
+
+prediction_van <-expand_grid(City = c("vancouver"),
+                         Year = 2023:2032) %>%
+  bind_cols(predicted_bloom_doy= 
+              predict(ls_fit_blossom_van, newdata = gdd_prcp_pred[31:40,])) 
+
+```
+
+Not surprisingly, the predicted peak bloom dates for Vancouver are thus very similar to the other 3 sites:
+```{r}
+
+```
+
+We can check the predictions against the data from previous competition years.
+```{r}
+
+```
+
+If satisfied with the predictions, we can append them to the predictions for the other sites:
+```{r}
+predictions <-prediction %>% arrange(City) %>%
+  bind_rows( prediction_van)
+```
+
+## Preparing the submission file
+
+Once we have the predictions for all four sites, we have to save them in the correct format for the competition.
+
+```{r}
+
+submission_predictions <- predictions %>% 
+  mutate(predicted_bloom_doy = round(predicted_bloom_doy)) %>% 
+  pivot_wider(names_from = 'City', values_from = 'predicted_bloom_doy')
+submission_predictions
+```
+
+For submission, these predictions must be saved as a CSV file.
+**Important:** the CSV file must not have row names, which R adds by default. Specify `row.names=FALSE` to suppress them:
+
+```{r, eval=FALSE}
+write.csv(submission_predictions, file = "cherry-predictions.csv",
+          row.names = FALSE)
+```
+

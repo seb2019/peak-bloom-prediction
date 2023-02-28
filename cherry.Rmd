@@ -39,7 +39,8 @@ library(lubridate)
 # upload cherry bloom data
 cherry <- read.csv("data/washingtondc.csv") %>% 
   bind_rows(read.csv("data/liestal.csv")) %>% 
-  bind_rows(read.csv("data/kyoto.csv"))
+  bind_rows(read.csv("data/kyoto.csv")) %>%
+  bind_rows(read.csv("data/vancouver.csv"))
 ```
 
 ## Visualizing the time series
@@ -61,6 +62,7 @@ The gdd is the accummulated growing degrees on the historical average bloom_doy.
 
 ```{r}
 # Find average DOY for each location 
+#
 washington_doy <- cherry %>% filter(location == 'washingtondc') %>% filter(year >= 1980) 
  washington_doy<- mean(washington_doy$bloom_doy)
  
@@ -70,8 +72,8 @@ washington_doy <- cherry %>% filter(location == 'washingtondc') %>% filter(year 
  liestal_doy <- cherry %>% filter(location == 'liestal') %>% filter(year >= 1980) 
  liestal_doy<- mean(liestal_doy$bloom_doy)
 
-# Take the average of other doys to get estimate for vancouver 
-vancouver_doy <- sum(kyoto_doy,washington_doy,liestal_doy)/3
+# Average
+vancouver_doy <- sum(kyoto_doy,liestal_doy,washington_doy)/3
 ```
 
 
@@ -158,9 +160,17 @@ cherry_gdd <- historic_temperatures %>%
   left_join(cherry,
             by=c('year','location')) 
 
+
+# Exploratory data anlysis
+cor(cherry_gdd$gdd,cherry_gdd$prcp)
+hist(cherry_gdd$bloom_doy)
+plot(bloom_doy~gdd, data=cherry_gdd)
+plot(bloom_doy~prcp, data=cherry_gdd)
+
+
 ### model 
 ls_fit_blossom<- lm(bloom_doy ~ gdd*location+prcp, 
-     data = cherry_gdd)
+     data = cherry_gdd[1:109,])
 summary(ls_fit_blossom)
 
 ### extrapolated data used to predict bloom_doy
@@ -180,8 +190,8 @@ prediction <-expand_grid(City = c("washingtondc", "liestal", "kyoto"),
 ## Extrapolating to Vancouver, BC
 
 ```{r}
-#vancouver prediction 
-ls_fit_blossom_van<- lm(bloom_doy ~ gdd+prcp+ long + lat, 
+#vancouver prediction
+ls_fit_blossom_van<- lm(bloom_doy ~ gdd+prcp+ long + lat,
                     data = cherry_gdd)
 
 summary(ls_fit_blossom_van)
@@ -192,25 +202,16 @@ gdd_prcp_pred$long <- ifelse(gdd_prcp_pred$location=='vancouver',-123.16,NA)
 
 prediction_van <-expand_grid(City = c("vancouver"),
                          Year = 2023:2032) %>%
-  bind_cols(predicted_bloom_doy= 
-              predict(ls_fit_blossom_van, newdata = gdd_prcp_pred[31:40,])) 
+  bind_cols(predicted_bloom_doy=
+              predict(ls_fit_blossom_van, newdata = gdd_prcp_pred[31:40,]))
 
 ```
 
-Not surprisingly, the predicted peak bloom dates for Vancouver are thus very similar to the other 3 sites:
+Append Vancouver predictions to the predictions for other cities. 
+
 ```{r}
-
-```
-
-We can check the predictions against the data from previous competition years.
-```{r}
-
-```
-
-If satisfied with the predictions, we can append them to the predictions for the other sites:
-```{r}
-predictions <-prediction %>% arrange(City) %>%
-  bind_rows( prediction_van)
+ predictions <-prediction %>% arrange(City) %>%
+   bind_rows( prediction_van)
 ```
 
 ## Preparing the submission file

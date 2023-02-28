@@ -1,0 +1,49 @@
+---
+title: "Cherry Blossom Narrative"
+
+date: "2/28/2023"
+output: pdf_document
+indent: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction  
+
+Around the world the blossoming of cherry trees is marked by festivals that boost the local economy and bring people of all backgrounds together. However, festival organizers aren't the only people interested in cherry blossom bloom dates. Environmental scientists are also interested;  in the last ten years cherry trees bloomed earlier than ever before due to climate change.   
+  
+Although cherry blossoms are a visible marker of climate change, one cannot simply use last year's bloom date to predict this years bloom date. The cherry blossoms are extremely sensitive to weather conditions, particularly temperature.  
+
+# Variables and Data Sources
+The variables used in this model are growing degree days (gdd) and accumulated precipitation. The rnoaa package was used to obtain daily maximum and minimum temperatures and daily precipitation data for Kyoto,Liestal, Vancouver and Washington DC.   
+
+GDD are used to estimate the growth and development of plants. Growing degrees calculated as follows: *(T_max - T_min)/2 - T_base *.  In other words, calculate 
+the average temperature and subtract the base temperature needed for growth to occur. If For cherry blossoms the base temperature is zero degrees celsius. If the gdd is negative, set to zero. Take the sum of the growing degrees to calculate the gdd. In this model,  the calculations for gdd begin on January 1. 
+
+
+
+# Model 
+
+To account for climate change, this model was built using data from 1980 onwards. 
+The average bloom days for Kyoto, Liestal and Washington DC were calculated using data from 1980-2022. Since Vancouver only has data for 2022, an average of the Kyoto, Liestal and Washington DC average bloom days was used to estimate the Vancouver average bloom day from 1980- 2022. 
+
+The gdd was calculated based on the average bloom day for each city. For example, the Washington DC average bloom day is April 1. Hence, the  calculated gdd for Washington DC is the gdd on April 1 of each year. Meanwhile, the average bloom day for Kyoto is April 6. Thus, the calculated gdd for Kyoto is the gdd on April 6 on each year. The same logic was applied for calculating the accumulated precipitation. The historical data on gdd and precipitation was extrapolated via simple linear regression to predict future values.
+
+The model for predicting the Kyoto, Liestal and Washington DC bloom days used an interaction term of location and gdd and accumulated precipitation. Due to the lack of data on Vancouver,a separate model with variables gdd, accumulated precipitation, longitude and latitude was used to predict Vancouver's beak bloom.
+
+
+# Predictions
+
+The 2023 prediction for Washington DC is March 27. For Liestal, the 2023 predicted bloom date is March 30. The predicted peak bloom for Vancouver is April 4. Lastly, the predicted peak bloom for Kyoto is April 5. 
+
+
+# Limtiations and Implications
+
+Limitations to the current model include missing data. Kyoto in particular was missing 15 years of precipitation data. Additionally, the calculated gdd is likely an underestimate due to missing data.  
+
+Finding a simple, accessible model to predict cherry blossom bloom dates is beneficial to cities like Vancouver who lack historical bloom date data, but want to celebrate the cherry blossoms.   
+
+
+
